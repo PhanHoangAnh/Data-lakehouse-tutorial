@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Tutorial: Deploying a Data Lakehouse on K3s</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Style for the code blocks (dark theme) */
+        pre {
+            background-color: #1E293B; /* slate-800 */
+            color: #F1F5F9; /* slate-100 */
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            position: relative;
+        }
+        .copy-button {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #334155; /* slate-700 */
+            color: #CBD5E1; /* slate-300 */
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background-color 0.2s;
+        }
+        .copy-button:hover {
+            background-color: #475569; /* slate-600 */
+        }
+        /* Style for prominent points (light theme) */
+        .prominent-point {
+            background-color: #EFF6FF; /* blue-50 */
+            border-left: 4px solid #3B82F6; /* blue-500 */
+            padding: 1rem;
+            margin: 1.5rem 0;
+            border-radius: 0.25rem;
+        }
+        .prominent-point strong {
+            color: #1E3A8A; /* blue-900 */
+        }
+        .prominent-point p {
+            color: #1E40AF; /* blue-800 */
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-700">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+
+        <header class="text-center mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 mb-4">Deploying the Data Lakehouse on K3s</h1>
+            <p class="text-lg text-slate-600">An interactive guide to deploying a containerized application on a local K3s cluster.</p>
+        </header>
+
+        <!-- SVG Diagram -->
+        <div class="mb-12 bg-white p-4 rounded-lg shadow-lg border border-slate-200">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4 text-center">System Architecture Diagram</h2>
+            <svg width="100%" viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg" class="bg-slate-100 rounded">
+                <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6" />
+                    </marker>
+                    <style>
+                        .label { font-family: 'Inter', sans-serif; font-size: 16px; fill: #334155; }
+                        .title-label { font-size: 20px; font-weight: bold; fill: #1E293B; }
+                        .sub-label { font-size: 14px; fill: #475569; }
+                        .arrow-line { stroke: #3B82F6; stroke-width: 2; marker-end: url(#arrow); }
+                        .dashed-line { stroke: #CBD5E1; stroke-width: 2; stroke-dasharray: 5,5; }
+                    </style>
+                </defs>
+
+                <!-- Local Machine -->
+                <rect x="50" y="250" width="250" height="200" rx="10" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="2"/>
+                <text x="175" y="280" text-anchor="middle" class="title-label">Your Machine</text>
+                <text x="175" y="340" text-anchor="middle" class="label">Terminal</text>
+                <text x="175" y="360" text-anchor="middle" class="sub-label">(kubectl, docker)</text>
+                <path d="M175 370 L175 420" stroke="#64748B" stroke-width="1"/>
+
+                <!-- Docker Environment -->
+                <rect x="350" y="50" width="800" height="600" rx="15" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+                <text x="750" y="80" text-anchor="middle" class="title-label">Docker Environment</text>
+
+                <!-- k3d Cluster -->
+                <rect x="400" y="120" width="700" height="480" rx="10" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="2"/>
+                <text x="750" y="150" text-anchor="middle" class="title-label">k3d Cluster: my-lakehouse-cluster</text>
+
+                <!-- Nodes -->
+                <rect x="430" y="180" width="200" height="100" rx="5" fill="#E2E8F0"/>
+                <text x="530" y="220" text-anchor="middle" class="label">Server Node</text>
+                <text x="530" y="240" text-anchor="middle" class="sub-label">(Control Plane)</text>
+                <rect x="430" y="300" width="200" height="100" rx="5" fill="#E2E8F0"/>
+                <text x="530" y="340" text-anchor="middle" class="label">Agent Node</text>
+                <text x="530" y="360" text-anchor="middle" class="sub-label">(Runs Pods)</text>
+
+                <!-- Pods on Agent Node -->
+                <g transform="translate(680, 200)">
+                    <rect x="0" y="0" width="380" height="380" rx="5" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+                    <text x="190" y="30" text-anchor="middle" class="label">Kubernetes Pods</text>
+                    <rect x="20" y="50" width="340" height="90" rx="5" fill="#E2E8F0"/>
+                    <text x="190" y="95" text-anchor="middle" class="label">spark-jupyter</text>
+                    <rect x="20" y="160" width="150" height="90" rx="5" fill="#E2E8F0"/>
+                    <text x="95" y="205" text-anchor="middle" class="label">minio</text>
+                    <rect x="210" y="160" width="150" height="90" rx="5" fill="#E2E8F0"/>
+                    <text x="285" y="205" text-anchor="middle" class="label">postgres</text>
+                    <!-- Pod connections -->
+                    <path d="M 190 145 L 190 160" class="arrow-line" />
+                    <path d="M 190 145 L 95 160" class="arrow-line" />
+                    <path d="M 190 145 L 285 160" class="arrow-line" />
+                    <text x="215" y="155" class="sub-label" fill="#3B82F6">k8s service DNS</text>
+                </g>
+
+                <!-- Registry -->
+                <rect x="430" y="450" width="200" height="100" rx="5" fill="#E2E8F0"/>
+                <text x="530" y="490" text-anchor="middle" class="label">Registry</text>
+                <text x="530" y="510" text-anchor="middle" class="sub-label">my-registry:5000</text>
+                
+                <!-- Arrows and Flows -->
+                <path d="M 305 290 Q 350 220, 425 210" class="arrow-line" fill="none"/>
+                <text x="350" y="260" class="label" fill="#3B82F6">1. kubectl apply</text>
+                
+                <path d="M 305 400 Q 370 480, 425 480" class="arrow-line" fill="none"/>
+                <text x="320" y="440" class="label" fill="#3B82F6">2. docker push</text>
+                <text x="320" y="460" class="sub-label" fill="#3B82F6">localhost:5000</text>
+
+                <path d="M 635 480 L 650 480 Q 670 480, 670 460 L 670 340 Q 670 320, 650 320 L 635 320" class="arrow-line" fill="none"/>
+                <text x="580" y="400" class="label" fill="#3B82F6">3. k3s pulls image</text>
+
+                <path d="M 175 180 C 175 100, 700 100, 780 240" class="arrow-line" fill="none" stroke-dasharray="8,8"/>
+                <text x="450" y="100" class="label" fill="#3B82F6">4. kubectl port-forward</text>
+            </svg>
+        </div>
+
+        <main>
+            <!-- Phase 1 -->
+            <section class="mb-12">
+                <h2 class="text-3xl font-bold text-slate-900 border-b-2 border-slate-200 pb-2 mb-6">Phase 1: K3s Cluster and Registry Setup</h2>
+                <p class="mb-4">Before deploying, we need a Kubernetes cluster. We use k3d, a tool that runs a lightweight K3s cluster inside Docker, which is perfect for local development.</p>
+                
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Install kubectl and k3d</h3>
+                <p class="mb-4"><code>kubectl</code> is the command-line tool for interacting with any Kubernetes cluster. <code>k3d</code> is the tool for creating and managing our local K3s clusters.</p>
+                <div class="code-container">
+                    <pre><code class="language-bash"># Install kubectl
+sudo snap install kubectl --classic
+# Install k3d
+wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash</code></pre>
+                </div>
+
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Create the Cluster with an Integrated Registry</h3>
+                <div class="code-container">
+                    <pre><code class="language-bash">k3d cluster create my-lakehouse-cluster --agents 1 --registry-create my-registry:5000</code></pre>
+                </div>
+                <div class="prominent-point">
+                    <p><strong>Explanation:</strong></p>
+                    <ul class="list-disc list-inside mt-2">
+                        <li><code>--agents 1</code>: Creates a realistic two-node cluster: one "server" node (the brain) and one "agent" node (the worker that runs our applications).</li>
+                        <li class="mt-2"><code>--registry-create my-registry:5000</code>: This automatically creates a private container registry named <code>my-registry</code> and configures our K3s cluster to pull images from it. This is necessary because Kubernetes can only run pre-built images from a registry.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Phase 2 -->
+            <section class="mb-12">
+                <h2 class="text-3xl font-bold text-slate-900 border-b-2 border-slate-200 pb-2 mb-6">Phase 2: Build and Push the Custom Image</h2>
+                <p class="mb-4">Now, we create our custom <code>spark-jupyter</code> image using a Dockerfile, build it, and upload it to the local registry.</p>
+                
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Create the Dockerfile</h3>
+                 <p class="mb-4">This file defines the steps to build our custom container image with Spark, Java, and all necessary dependencies.</p>
+                <div class="code-container">
+                    <pre><code class="language-dockerfile"># Start from a base image that has JupyterLab and Python installed.
+FROM jupyter/base-notebook:latest
+
+# Switch to the root user to install system packages.
+USER root
+
+# Install Java (OpenJDK 17).
+RUN apt-get update && \
+    apt-get install -y openjdk-17-jdk && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set up the environment variables.
+ENV SPARK_HOME=/opt/spark-3.5.1-bin-hadoop3
+ENV HADOOP_HOME=/opt/hadoop-3.3.6
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin:$HADOOP_HOME/bin
+ENV LD_LIBRARY_PATH=$HADOOP_HOME/lib/native:$LD_LIBRARY_PATH
+ENV PYTHONPATH=$SPARK_HOME/python/:$PYTHONPATH
+
+# Copy and extract Spark and Hadoop.
+COPY spark-3.5.1-bin-hadoop3.tgz /opt/
+COPY hadoop-3.3.6.tar.gz /opt/
+RUN tar -xzf /opt/spark-3.5.1-bin-hadoop3.tgz -C /opt/ && \
+    tar -xzf /opt/hadoop-3.3.6.tar.gz -C /opt/ && \
+    rm /opt/*.tgz
+
+# Copy pre-downloaded JARs into Spark's 'jars' directory.
+COPY *.jar $SPARK_HOME/jars/
+
+# Install Python dependencies.
+RUN pip install py4j
+
+# Bake JAR paths into Spark's default configuration.
+RUN echo "spark.jars /opt/spark-3.5.1-bin-hadoop3/jars/iceberg-spark-runtime-3.5-1.5.2.jar,/opt/spark-3.5.1-bin-hadoop3/jars/postgresql-42.7.3.jar,/opt/spark-3.5.1-bin-hadoop3/jars/bundle-2.25.30.jar,/opt/spark-3.5.1-bin-hadoop3/jars/hadoop-aws-3.3.4.jar,/opt/spark-3.5.1-bin-hadoop3/jars/aws-java-sdk-bundle-1.12.262.jar" >> $SPARK_HOME/conf/spark-defaults.conf
+
+# Switch back to the default, non-root user.
+USER $NB_UID
+
+# Set the working directory.
+WORKDIR /home/jovyan/work</code></pre>
+                </div>
+
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Build the image</h3>
+                <div class="code-container">
+                    <pre><code class="language-bash"># Navigate to the project root
+cd ~/docker-lakehouse
+docker compose build</code></pre>
+                </div>
+
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Tag and Push the image</h3>
+                <div class="code-container">
+                    <pre><code class="language-bash">docker tag docker-lakehouse-spark-jupyter:latest localhost:5000/spark-jupyter:latest
+docker push localhost:5000/spark-jupyter:latest</code></pre>
+                </div>
+                <div class="prominent-point">
+                    <p><strong>Mistake & Lesson:</strong> Our first attempt to push using <code>my-registry:5000</code> failed with a DNS error.</p>
+                    <p class="mt-2"><strong>Reason:</strong> The name <code>my-registry</code> only exists inside the private Docker network that k3d created. Our host machine (the terminal) is outside that network.</p>
+                    <p class="mt-2"><strong>Solution:</strong> We push to <code>localhost:5000</code>. k3d conveniently maps the registry's internal port to our host machine's port 5000, so <code>localhost</code> is the correct address to use from our terminal.</p>
+                </div>
+            </section>
+
+            <!-- Phase 3 -->
+            <section class="mb-12">
+                <h2 class="text-3xl font-bold text-slate-900 border-b-2 border-slate-200 pb-2 mb-6">Phase 3: Create Kubernetes Manifests</h2>
+                <p class="mb-4">We must translate our <code>docker-compose.yml</code> file into a set of Kubernetes "manifests" (YAML files). For each service, we need three key objects: a <strong>PersistentVolumeClaim (PVC)</strong> for storage, a <strong>Deployment</strong> for running pods, and a <strong>Service</strong> for networking. Create these files in a new <code>k8s-manifests</code> directory.</p>
+
+                <h3 class="text-2xl font-semibold text-slate-800 mt-8 mb-4">Postgres Manifests</h3>
+                <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">postgres-pvc.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># postgres-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi</code></pre>
+                </div>
+                <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">postgres-deployment.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># postgres-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:14
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "iceberg"
+            - name: POSTGRES_PASSWORD
+              value: "iceberg"
+            - name: POSTGRES_DB
+              value: "iceberg_catalog"
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc</code></pre>
+                </div>
+                <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">postgres-service.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># postgres-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-catalog
+spec:
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432</code></pre>
+                </div>
+
+                <h3 class="text-2xl font-semibold text-slate-800 mt-8 mb-4">MinIO Manifests</h3>
+                <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">minio-pvc.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># minio-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi</code></pre>
+                </div>
+                <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">minio-deployment.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># minio-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          command:
+            - "minio"
+            - "server"
+            - "/data"
+            - "--console-address"
+            - ":9090"
+          ports:
+            - containerPort: 9000
+            - containerPort: 9090
+          env:
+            - name: MINIO_ROOT_USER
+              value: "minioadmin"
+            - name: MINIO_ROOT_PASSWORD
+              value: "minioadmin"
+          volumeMounts:
+            - name: minio-storage
+              mountPath: /data
+      volumes:
+        - name: minio-storage
+          persistentVolumeClaim:
+            claimName: minio-pvc</code></pre>
+                </div>
+                 <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">minio-service.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># minio-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      protocol: TCP
+      port: 9000
+      targetPort: 9000
+    - name: console
+      protocol: TCP
+      port: 9090
+      targetPort: 9090</code></pre>
+                </div>
+                
+                <div class="prominent-point">
+                     <p><strong>Mistake & Lesson:</strong> Our first attempt to deploy MinIO failed with a <code>CrashLoopBackOff</code> error.</p>
+                     <p class="mt-2"><strong>Reason:</strong> The <code>command</code> field in a Kubernetes Deployment replaces the container's default entrypoint, unlike in Docker Compose where it often appends arguments. Our command <code>server ...</code> failed because the actual program is <code>minio</code>.</p>
+                     <p class="mt-2"><strong>Solution:</strong> We corrected the <code>minio-deployment.yaml</code> to use the full command: <code>command: ["minio", "server", "/data", ...]</code>. This is a critical distinction between Docker Compose and Kubernetes.</p>
+                </div>
+
+                <h3 class="text-2xl font-semibold text-slate-800 mt-8 mb-4">Spark-Jupyter Manifests</h3>
+                 <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">spark-jupyter-deployment.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># spark-jupyter-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-jupyter-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-jupyter
+  template:
+    metadata:
+      labels:
+        app: spark-jupyter
+    spec:
+      containers:
+        - name: spark-jupyter
+          image: my-registry:5000/spark-jupyter:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8888
+            - containerPort: 4040
+          volumeMounts:
+            - name: notebooks-storage
+              mountPath: /home/jovyan/work
+      volumes:
+        - name: notebooks-storage
+          hostPath:
+            # IMPORTANT: This path must be the absolute path on your host machine.
+            # The '~' shortcut does not work here.
+            path: /home/ubuntu/docker-lakehouse/notebooks</code></pre>
+                </div>
+                 <h4 class="text-lg font-medium text-slate-700 mt-4 mb-2">spark-jupyter-service.yaml</h4>
+                <div class="code-container">
+                    <pre><code class="language-yaml"># spark-jupyter-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-jupyter
+spec:
+  type: NodePort
+  selector:
+    app: spark-jupyter
+  ports:
+    - name: jupyter
+      protocol: TCP
+      port: 8888
+      targetPort: 8888
+    - name: spark-ui
+      protocol: TCP
+      port: 4040
+      targetPort: 4040</code></pre>
+                </div>
+            </section>
+
+            <!-- Phase 4 -->
+            <section class="mb-12">
+                <h2 class="text-3xl font-bold text-slate-900 border-b-2 border-slate-200 pb-2 mb-6">Phase 4: Deploy and Access the Application</h2>
+                
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Apply the Manifests</h3>
+                <p class="mb-4">This single command tells Kubernetes to read all our YAML files and create the application.</p>
+                <div class="code-container">
+                    <pre><code class="language-bash"># Navigate to the manifests directory
+cd ~/docker-lakehouse/k8s-manifests
+kubectl apply -f .</code></pre>
+                </div>
+
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Monitor the Deployment</h3>
+                <p class="mb-4">Watch the pods start up. The goal is to see <code>Running</code> for all three.</p>
+                <div class="code-container">
+                    <pre><code class="language-bash">kubectl get pods -w</code></pre>
+                </div>
+
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Access JupyterLab via Port-Forwarding</h3>
+                <div class="code-container">
+                    <pre><code class="language-bash"># Open a new terminal for this command and leave it running
+JUPYTER_POD=$(kubectl get pods -l app=spark-jupyter -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward $JUPYTER_POD 9999:8888</code></pre>
+                </div>
+                 <div class="prominent-point">
+                    <p><strong>Explanation:</strong> We cannot use <code>localhost:8888</code> directly. In Kubernetes, services are only exposed inside the cluster by default. <code>port-forward</code> creates a secure tunnel from your local machine's port 9999 directly to the Jupyter pod's port 8888, allowing you to access it.</p>
+                </div>
+
+                <h3 class="text-xl font-semibold text-slate-800 mt-6 mb-3">Get the Login Token</h3>
+                <div class="code-container">
+                    <pre><code class="language-bash"># Run this in another terminal
+kubectl logs $JUPYTER_POD</code></pre>
+                </div>
+                <p class="mt-4">Copy the full URL with the token (e.g., <code>http://127.0.0.1:8888/lab?token=...</code>) and change the port to <code>9999</code> before pasting it into your browser.</p>
+            </section>
+
+            <!-- Phase 5 -->
+            <section>
+                <h2 class="text-3xl font-bold text-slate-900 border-b-2 border-slate-200 pb-2 mb-6">Phase 5: Final PySpark Code for Kubernetes</h2>
+                <p class="mb-4">The code inside the notebook must be updated to work within the Kubernetes network.</p>
+                <div class="code-container">
+                    <pre><code class="language-python">from pyspark.sql import SparkSession
+
+# This configuration uses the Kubernetes Service names as hostnames,
+# which is the standard for in-cluster communication.
+spark = SparkSession.builder \\
+    .appName("K8s-Iceberg") \\
+    .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.postgresql:postgresql:42.7.3,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262") \\
+    .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \\
+    .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog") \\
+    .config("spark.sql.catalog.local.type", "jdbc") \\
+    .config("spark.sql.catalog.local.uri", "jdbc:postgresql://postgres-catalog:5432/iceberg_catalog") \\
+    .config("spark.sql.catalog.local.warehouse", "s3a://datalake/warehouse") \\
+    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \\
+    .config("spark.hadoop.fs.s3a.access.key", "minioadmin") \\
+    .config("spark.hadoop.fs.s3a.secret.key", "minioadmin") \\
+    .config("spark.hadoop.fs.s3a.path.style.access", "true") \\
+    .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \\
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \\
+    .getOrCreate()
+
+print("SparkSession created successfully on K3s!")</code></pre>
+                </div>
+                <div class="prominent-point">
+                    <p><strong>Explanation:</strong> Notice the connection strings now use the Kubernetes Service names (<code>postgres-catalog</code> and <code>minio</code>) instead of <code>localhost</code>. Kubernetes has its own internal DNS that allows containers to find each other by the service names we defined in our <code>.yaml</code> files. This is a fundamental concept of in-cluster communication.</p>
+                </div>
+            </section>
+
+            <footer class="text-center mt-16 text-slate-500">
+                <p>Congratulations! You have successfully deployed a data lakehouse on Kubernetes.</p>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+        // --- Copy to Clipboard functionality ---
+        function addCopyButtons() {
+            const codeContainers = document.querySelectorAll('.code-container');
+            codeContainers.forEach(container => {
+                const pre = container.querySelector('pre');
+                if (pre) {
+                    // Avoid adding a button if one already exists
+                    if (pre.querySelector('.copy-button')) {
+                        return;
+                    }
+                    const button = document.createElement('button');
+                    button.innerText = 'Copy';
+                    button.className = 'copy-button';
+                    pre.style.position = 'relative'; 
+                    pre.appendChild(button);
+
+                    button.addEventListener('click', () => {
+                        const code = pre.querySelector('code').innerText;
+                        
+                        // Use the Clipboard API as it's more modern
+                        if (navigator.clipboard) {
+                            navigator.clipboard.writeText(code).then(() => {
+                                button.innerText = 'Copied!';
+                                setTimeout(() => {
+                                    button.innerText = 'Copy';
+                                }, 2000);
+                            }).catch(err => {
+                                console.error('Failed to copy text: ', err);
+                            });
+                        } else {
+                            // Fallback for older browsers or insecure contexts
+                            const textArea = document.createElement('textarea');
+                            textArea.value = code;
+                            document.body.appendChild(textArea);
+                            textArea.focus();
+                            textArea.select();
+                            try {
+                                document.execCommand('copy');
+                                button.innerText = 'Copied!';
+                                setTimeout(() => {
+                                    button.innerText = 'Copy';
+                                }, 2000);
+                            } catch (err) {
+                                console.error('Fallback: Oops, unable to copy', err);
+                            }
+                            document.body.removeChild(textArea);
+                        }
+                    });
+                }
+            });
+        }
+
+        // Add buttons when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', addCopyButtons);
+    </script>
+
+</body>
+</html>
