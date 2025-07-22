@@ -271,42 +271,59 @@ services:
             <div id="content-kubernetes" class="tab-content space-y-8 hidden">
                 <div class="bg-white p-6 sm:p-8 rounded-xl shadow-md">
                     <h2 class="text-2xl font-bold text-slate-900 mb-2">Case 3: Kubernetes (K3s) Deployment</h2>
-                    <p class="text-slate-600 mb-4">The standard for scalable, cloud-native production deployments. The strategy is to use a custom-built Docker image and pass configurations via the PySpark script.</p>
+                    <p class="text-slate-600 mb-4">The standard for scalable, cloud-native production deployments. The strategy is to use a custom-built Docker image and pass configurations via environment variables in a Kubernetes Deployment manifest.</p>
 
-                    <h3 class="text-lg font-semibold mt-6 mb-2">Step 1: The PySpark Notebook Code</h3>
-                    <p class="text-slate-600 mb-4">This is the final, most robust configuration we discovered. It uses <code class="text-sm bg-slate-100 text-red-600 rounded px-1 py-0.5">spark.jars.packages</code> to ensure all dependencies are correctly loaded by the Spark engine, which is critical in a complex containerized environment.</p>
+                    <h3 class="text-lg font-semibold mt-6 mb-2">Step 1: The Deployment Manifest</h3>
+                    <p class="text-slate-600 mb-4">Define your Spark/Jupyter application in a <code class="text-sm bg-slate-100 text-red-600 rounded px-1 py-0.5">.yaml</code> file. This example uses the <code class="text-sm bg-slate-100 text-red-600 rounded px-1 py-0.5">SPARK_OPTS</code> environment variable to inject all configurations, separating them from the application code.</p>
+                    <div class="code-block">
+                        <button class="copy-btn">Copy</button>
+                        <pre><code class="language-yaml"># spark-jupyter-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-jupyter-deployment
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: spark-jupyter
+          # Use the custom image we built and pushed to our registry
+          image: my-registry:5000/spark-jupyter:latest
+          ports:
+            - containerPort: 8888
+            - containerPort: 4040
+          env:
+          - name: SPARK_OPTS
+            value: >-
+              --packages org.apache.iceberg:iceberg-aws-bundle:1.5.2,org.postgresql:postgresql:42.7.3
+              --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+              --conf spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog
+              --conf spark.sql.catalog.lakehouse.catalog-impl=org.apache.iceberg.jdbc.JdbcCatalog
+              --conf spark.sql.catalog.lakehouse.uri=jdbc:postgresql://postgres-catalog:5432/iceberg_catalog
+              --conf spark.sql.catalog.lakehouse.warehouse=s3a://datalake/warehouse
+              --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000
+              --conf spark.hadoop.fs.s3a.path.style.access=true
+              --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+          # In production, secrets would be mounted from a Kubernetes Secret
+          # envFrom:
+          # - secretRef:
+          #     name: lakehouse-secrets
+</code></pre>
+                    </div>
+
+                    <h3 class="text-lg font-semibold mt-6 mb-2">Result: Simplified Notebook Code</h3>
+                    <p class="text-slate-600 mb-4">The code in your Jupyter notebook is now completely independent of configuration and secrets, making it clean and portable.</p>
                     <div class="code-block">
                         <button class="copy-btn">Copy</button>
                         <pre><code class="language-python">from pyspark.sql import SparkSession
 
-# This configuration is the most reliable for Kubernetes.
-# It explicitly tells the SparkSession which packages to load,
-# resolving complex dependency issues.
-spark = SparkSession.builder \\
-    .appName("K8sDataLakehouseApp") \\
-    .config("spark.jars.packages", "org.apache.iceberg:iceberg-aws-bundle:1.5.2,org.postgresql:postgresql:42.7.3") \\
-    .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \\
-    .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog") \\
-    .config("spark.sql.catalog.lakehouse.catalog-impl", "org.apache.iceberg.jdbc.JdbcCatalog") \\
-    .config("spark.sql.catalog.lakehouse.uri", "jdbc:postgresql://postgres-catalog:5432/iceberg_catalog") \\
-    .config("spark.sql.catalog.lakehouse.warehouse", "s3a://datalake/warehouse") \\
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \\
-    .config("spark.hadoop.fs.s3a.path.style.access", "true") \\
-    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \\
-    # --- Production Security: Use Kubernetes Secrets ---
-    # The following would be loaded from secure environment variables or mounted files
-    # .config("spark.sql.catalog.lakehouse.jdbc.user", os.environ.get("DB_USER"))
-    # .config("spark.sql.catalog.lakehouse.jdbc.password", os.environ.get("DB_PASSWORD"))
-    # .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ACCESS_KEY"))
-    # .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_SECRET_KEY"))
-    .getOrCreate()
+# All configurations are injected by the Kubernetes environment.
+# The code is now clean and focused on logic.
+spark = SparkSession.builder.appName("K8sDataLakehouseApp").getOrCreate()
 
-# For our project, we set them directly for simplicity
-spark.conf.set("spark.sql.catalog.lakehouse.jdbc.user", "iceberg")
-spark.conf.set("spark.sql.catalog.lakehouse.jdbc.password", "your_secure_password")
-spark.conf.set("spark.hadoop.fs.s3a.access.key", "minioadmin")
-spark.conf.set("spark.hadoop.fs.s3a.secret.key", "your_secure_minio_secret")
-</code></pre>
+# You can now use the catalog directly
+spark.sql("CREATE TABLE IF NOT EXISTS lakehouse.db.my_table (id bigint, data string) USING iceberg")</code></pre>
                     </div>
                 </div>
             </div>
